@@ -1,0 +1,66 @@
+name: Build APK from uploaded ZIP
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find uploaded project ZIP
+        id: archive
+        shell: bash
+        run: |
+          ZIP="$(find . -maxdepth 1 -type f -iname '*.zip' ! -name 'backup*.zip' | sort | tail -n 1)"
+          if [ -z "$ZIP" ]; then
+            echo "No project ZIP found in the repository root."
+            exit 1
+          fi
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+          echo "Using $ZIP"
+
+      - name: Extract project
+        id: project
+        shell: bash
+        run: |
+          mkdir -p extracted
+          unzip -q "${{ steps.archive.outputs.zip }}" -d extracted
+          WRAPPER="$(find extracted -type f -name gradlew -print -quit)"
+          if [ -z "$WRAPPER" ]; then
+            echo "Could not find gradlew inside the uploaded ZIP. Make sure it contains the complete Android project."
+            find extracted -maxdepth 3 -type f | head -80
+            exit 1
+          fi
+          PROJECT_DIR="$(dirname "$WRAPPER")"
+          echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          chmod +x "$WRAPPER"
+          echo "Android project: $PROJECT_DIR"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoxTube-debug-apk
+          path: ${{ steps.project.outputs.dir }}/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
