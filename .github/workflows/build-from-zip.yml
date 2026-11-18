@@ -33,15 +33,14 @@ jobs:
         run: |
           mkdir -p extracted
           unzip -q "${{ steps.archive.outputs.zip }}" -d extracted
-          WRAPPER="$(find extracted -type f -name gradlew -print -quit)"
-          if [ -z "$WRAPPER" ]; then
-            echo "Could not find gradlew inside the uploaded ZIP. Make sure it contains the complete Android project."
-            find extracted -maxdepth 3 -type f | head -80
+          SETTINGS="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          if [ -z "$SETTINGS" ]; then
+            echo "No Gradle settings file found. The ZIP must contain a complete Android project."
+            find extracted -maxdepth 4 -type f | head -100
             exit 1
           fi
-          PROJECT_DIR="$(dirname "$WRAPPER")"
+          PROJECT_DIR="$(dirname "$SETTINGS")"
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
-          chmod +x "$WRAPPER"
           echo "Android project: $PROJECT_DIR"
 
       - name: Set up Java
@@ -52,10 +51,12 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
 
       - name: Build debug APK
         working-directory: ${{ steps.project.outputs.dir }}
-        run: ./gradlew --no-daemon assembleDebug
+        run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
