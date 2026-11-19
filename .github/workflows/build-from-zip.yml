@@ -57,7 +57,10 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/boxtube-project"
           unzip -q "${{ steps.archive.outputs.zip }}" -d "$RUNNER_TEMP/boxtube-project"
-          SETTINGS="$(find "$RUNNER_TEMP/boxtube-project" -type f \\( -name settings.gradle -o -name settings.gradle.kts \\) -print -quit)"
+          SETTINGS="$(find "$RUNNER_TEMP/boxtube-project" -type f -name settings.gradle.kts -print -quit)"
+          if [ -z "$SETTINGS" ]; then
+            SETTINGS="$(find "$RUNNER_TEMP/boxtube-project" -type f -name settings.gradle -print -quit)"
+          fi
           if [ -z "$SETTINGS" ]; then
             echo "ZIP does not contain settings.gradle or settings.gradle.kts."
             exit 1
