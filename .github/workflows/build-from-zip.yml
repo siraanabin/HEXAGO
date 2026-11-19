@@ -89,7 +89,7 @@ jobs:
           test -n "$KEY_ALIAS" || { echo "Missing KEY_ALIAS repository secret"; exit 1; }
           test -n "$KEY_PASSWORD" || { echo "Missing KEY_PASSWORD repository secret"; exit 1; }
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
-          VERSION_NAME="2.0.$GITHUB_RUN_NUMBER"
+          VERSION_NAME="2.0.$VERSION_CODE"
           gradle --no-daemon :app:assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" -Prepo="$GITHUB_REPOSITORY"
           A64="$(find app/build/outputs/apk/release -name '*arm64-v8a*.apk' -print -quit)"
           A32="$(find app/build/outputs/apk/release -name '*armeabi-v7a*.apk' -print -quit)"
@@ -114,8 +114,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.${{ github.run_number }}
-          name: BoxTube 2.0.${{ github.run_number }}
+          tag_name: v2.0.${{ env.VERSION_CODE }}
+          name: BoxTube 2.0.${{ env.VERSION_CODE }}
           body: |
             Signed BoxTube release.
             Install the 64-bit APK on most modern Android phones.
