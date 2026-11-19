@@ -112,6 +112,17 @@ jobs:
           echo "$KEYSTORE_BASE64" | base64 --decode > boxtube.p12
           test -s boxtube.p12
 
+      - name: Verify persistent signing certificate
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        working-directory: ${{ steps.project.outputs.dir }}
+        shell: bash
+        run: |
+          ACTUAL="$(openssl pkcs12 -in boxtube.p12 -nokeys -clcerts -passin env:KEYSTORE_PASSWORD | openssl x509 -noout -fingerprint -sha256 | cut -d= -f2)"
+          EXPECTED="48:EF:7F:37:D0:B8:1A:AF:64:D1:C2:42:B2:C1:CD:3D:A2:9A:4B:16:E8:1B:D1:03:97:F6:82:EB:92:3F:2F:F8"
+          echo "Signing certificate fingerprint: $ACTUAL"
+          test "$ACTUAL" = "$EXPECTED" || { echo "Signing key does not match the backup BoxTube key."; exit 1; }
+
       - name: Build signed release APKs
         working-directory: ${{ steps.project.outputs.dir }}
         env:
