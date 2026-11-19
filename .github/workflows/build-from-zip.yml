@@ -70,6 +70,23 @@ jobs:
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Android project: $PROJECT_DIR"
 
+      - name: Fix generated Gradle REPO string
+        working-directory: ${{ steps.project.outputs.dir }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/build.gradle.kts")
+          lines = path.read_text().splitlines()
+          matches = [i for i, line in enumerate(lines) if 'buildConfigField' in line and '"REPO"' in line]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected exactly one REPO buildConfigField, found {len(matches)}")
+          indent = lines[matches[0]][:len(lines[matches[0]]) - len(lines[matches[0]].lstrip())]
+          lines[matches[0]] = indent + 'buildConfigField("String", "REPO", "\\\\"$repo\\\\"")'
+          path.write_text("\\n".join(lines) + "\\n")
+          print("Corrected REPO buildConfigField:", lines[matches[0]].strip())
+          PY
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
