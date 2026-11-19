@@ -82,7 +82,7 @@ jobs:
           if len(matches) != 1:
               raise SystemExit(f"Expected exactly one REPO buildConfigField, found {len(matches)}")
           indent = lines[matches[0]][:len(lines[matches[0]]) - len(lines[matches[0]].lstrip())]
-          lines[matches[0]] = indent + r'''buildConfigField("String", "REPO", "\\"$repo\\"")'''
+          lines[matches[0]] = indent + r'''buildConfigField("String", "REPO", "\"$repo\"")'''
           path.write_text("\n".join(lines) + "\n")
           print("Corrected REPO buildConfigField:", lines[matches[0]].strip())
           PY
