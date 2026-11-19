@@ -31,13 +31,24 @@ jobs:
             echo "No BoxTube project ZIP found; nothing to build."
             exit 1
           fi
-          if [ "${#archives[@]}" -ne 1 ]; then
-            echo "Keep exactly one BoxTube*.zip in the repository root."
-            printf '%s\\n' "${archives[@]}"
-            exit 1
+          selected=""
+          for candidate in "${archives[@]}"; do
+            if [ "$candidate" = "BoxTube-HEXAGO-ready.zip" ]; then
+              selected="$candidate"
+              break
+            fi
+          done
+          if [ -z "$selected" ]; then
+            if [ "${#archives[@]}" -eq 1 ]; then
+              selected="${archives[0]}"
+            else
+              echo "Multiple BoxTube ZIPs found and no canonical BoxTube-HEXAGO-ready.zip."
+              printf '%s\\n' "${archives[@]}"
+              exit 1
+            fi
           fi
-          echo "zip=${archives[0]}" >> "$GITHUB_OUTPUT"
-          echo "Using ${archives[0]}"
+          echo "zip=$selected" >> "$GITHUB_OUTPUT"
+          echo "Using $selected"
 
       - name: Extract Android project
         id: project
