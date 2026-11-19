@@ -130,15 +130,14 @@ jobs:
           cp "$APK" "$GITHUB_WORKSPACE/BoxTube.apk"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          ls -lh "$GITHUB_WORKSPACE"/BoxTube-*.apk
+          ls -lh "$GITHUB_WORKSPACE"/BoxTube.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: BoxTube-APK-${{ github.run_number }}
           path: |
-            BoxTube-64bit-arm64-v8a.apk
-            BoxTube-32bit-armeabi-v7a.apk
+            BoxTube.apk
           if-no-files-found: error
           retention-days: 30
 
@@ -148,10 +147,7 @@ jobs:
           tag_name: v2.0.${{ env.VERSION_CODE }}
           name: BoxTube 2.0.${{ env.VERSION_CODE }}
           body: |
-            Signed BoxTube release.
-            Install the 64-bit APK on most modern Android phones.
-            Use the 32-bit APK only for 32-bit devices.
+            Signed BoxTube release. Install the attached APK.
           files: |
-            BoxTube-64bit-arm64-v8a.apk
-            BoxTube-32bit-armeabi-v7a.apk
+            BoxTube.apk
           make_latest: true
