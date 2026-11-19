@@ -1,12 +1,18 @@
-name: Build APK from uploaded ZIP
+name: Build BoxTube signed APKs and publish update
 
 on:
   push:
     branches: [main]
+    paths:
+      - '*.zip'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: boxtube-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -19,48 +25,35 @@ jobs:
         id: archive
         shell: bash
         run: |
-          ZIP="$(find . -maxdepth 1 -type f -iname '*.zip' ! -name 'backup*.zip' | sort | tail -n 1)"
-          if [ -z "$ZIP" ]; then
-            echo "No project ZIP found in the repository root."
+          shopt -s nullglob
+          archives=(BoxTube*.zip)
+          if [ "${#archives[@]}" -eq 0 ]; then
+            echo "No BoxTube project ZIP found; nothing to build."
             exit 1
           fi
-          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
-          echo "Using $ZIP"
+          if [ "${#archives[@]}" -ne 1 ]; then
+            echo "Keep exactly one BoxTube*.zip in the repository root."
+            printf '%s\\n' "${archives[@]}"
+            exit 1
+          fi
+          echo "zip=${archives[0]}" >> "$GITHUB_OUTPUT"
+          echo "Using ${archives[0]}"
 
-      - name: Extract project
+      - name: Extract Android project
         id: project
         shell: bash
         run: |
-          mkdir -p extracted
-          unzip -q "${{ steps.archive.outputs.zip }}" -d extracted
-          SETTINGS="$(find extracted -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
+          mkdir -p "$RUNNER_TEMP/boxtube-project"
+          unzip -q "${{ steps.archive.outputs.zip }}" -d "$RUNNER_TEMP/boxtube-project"
+          SETTINGS="$(find "$RUNNER_TEMP/boxtube-project" -type f \\( -name settings.gradle -o -name settings.gradle.kts \\) -print -quit)"
           if [ -z "$SETTINGS" ]; then
-            echo "No Gradle settings file found. The ZIP must contain a complete Android project."
-            find extracted -maxdepth 4 -type f | head -100
+            echo "ZIP does not contain settings.gradle or settings.gradle.kts."
             exit 1
           fi
           PROJECT_DIR="$(dirname "$SETTINGS")"
+          test -f "$PROJECT_DIR/app/build.gradle.kts" || { echo "app/build.gradle.kts missing"; exit 1; }
           echo "dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
           echo "Android project: $PROJECT_DIR"
-
-      - name: Fix malformed REPO BuildConfig string
-        working-directory: ${{ steps.project.outputs.dir }}
-        shell: python
-        run: |
-          from pathlib import Path
-          p = Path("app/build.gradle.kts")
-          if p.exists():
-              lines = p.read_text(encoding="utf-8").splitlines()
-              changed = False
-              for i, line in enumerate(lines):
-                  if 'buildConfigField("String", "REPO"' in line:
-                      lines[i] = r'        buildConfigField("String", "REPO", "\"$repo\"")'
-                      changed = True
-              if changed:
-                  p.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                  print("Corrected REPO BuildConfig string quoting.")
-              else:
-                  print("No malformed REPO BuildConfig line found; leaving file unchanged.")
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -68,19 +61,66 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
-      - name: Build debug APK
+      - name: Prepare persistent signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         working-directory: ${{ steps.project.outputs.dir }}
-        run: gradle --no-daemon assembleDebug
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "Missing KEYSTORE_BASE64 repository secret"; exit 1; }
+          echo "$KEYSTORE_BASE64" | base64 --decode > boxtube.p12
+          test -s boxtube.p12
 
-      - name: Upload APK
+      - name: Build signed release APKs
+        working-directory: ${{ steps.project.outputs.dir }}
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_PASSWORD" || { echo "Missing KEYSTORE_PASSWORD repository secret"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Missing KEY_ALIAS repository secret"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing KEY_PASSWORD repository secret"; exit 1; }
+          VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
+          VERSION_NAME="2.0.$GITHUB_RUN_NUMBER"
+          gradle --no-daemon :app:assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" -Prepo="$GITHUB_REPOSITORY"
+          A64="$(find app/build/outputs/apk/release -name '*arm64-v8a*.apk' -print -quit)"
+          A32="$(find app/build/outputs/apk/release -name '*armeabi-v7a*.apk' -print -quit)"
+          test -n "$A64" || { echo "64-bit APK not found"; find app/build/outputs/apk -type f; exit 1; }
+          test -n "$A32" || { echo "32-bit APK not found"; find app/build/outputs/apk -type f; exit 1; }
+          cp "$A64" "$GITHUB_WORKSPACE/BoxTube-64bit-arm64-v8a.apk"
+          cp "$A32" "$GITHUB_WORKSPACE/BoxTube-32bit-armeabi-v7a.apk"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          ls -lh "$GITHUB_WORKSPACE"/BoxTube-*.apk
+
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BoxTube-debug-apk
-          path: ${{ steps.project.outputs.dir }}/**/build/outputs/apk/debug/*.apk
+          name: BoxTube-APK-${{ github.run_number }}
+          path: |
+            BoxTube-64bit-arm64-v8a.apk
+            BoxTube-32bit-armeabi-v7a.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v2.0.${{ github.run_number }}
+          name: BoxTube 2.0.${{ github.run_number }}
+          body: |
+            Signed BoxTube release.
+            Install the 64-bit APK on most modern Android phones.
+            Use the 32-bit APK only for 32-bit devices.
+          files: |
+            BoxTube-64bit-arm64-v8a.apk
+            BoxTube-32bit-armeabi-v7a.apk
+          make_latest: true
