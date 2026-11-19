@@ -125,12 +125,9 @@ jobs:
           VERSION_CODE=$((1000 + GITHUB_RUN_NUMBER))
           VERSION_NAME="2.0.$VERSION_CODE"
           gradle --no-daemon :app:assembleRelease -PversionCode="$VERSION_CODE" -PversionName="$VERSION_NAME" -Prepo="$GITHUB_REPOSITORY"
-          A64="$(find app/build/outputs/apk/release -name '*arm64-v8a*.apk' -print -quit)"
-          A32="$(find app/build/outputs/apk/release -name '*armeabi-v7a*.apk' -print -quit)"
-          test -n "$A64" || { echo "64-bit APK not found"; find app/build/outputs/apk -type f; exit 1; }
-          test -n "$A32" || { echo "32-bit APK not found"; find app/build/outputs/apk -type f; exit 1; }
-          cp "$A64" "$GITHUB_WORKSPACE/BoxTube-64bit-arm64-v8a.apk"
-          cp "$A32" "$GITHUB_WORKSPACE/BoxTube-32bit-armeabi-v7a.apk"
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK" || { echo "Release APK not found"; find app/build/outputs/apk -type f; exit 1; }
+          cp "$APK" "$GITHUB_WORKSPACE/BoxTube.apk"
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
           ls -lh "$GITHUB_WORKSPACE"/BoxTube-*.apk
